@@ -23,7 +23,8 @@ import {
   ShieldCheck,
   LogOut,
   Users,
-  Route
+  Route,
+  Mic // Added for Voice SOS
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +84,6 @@ export default function DashboardPage() {
       setLoadingUser(false);
     }
   }, []);
-
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -215,8 +215,15 @@ export default function DashboardPage() {
               </div>
 
               <div className="p-4 border-t border-gray-200">
-                <h4 className="font-medium text-gray-900 mb-3 text-sm">{t('tools_and_features')}</h4>
+                <h4 className="font-medium text-gray-900 mb-3 text-sm">{t('emergency_tools')}</h4>
                 <nav className="space-y-1">
+                  {/* Voice SOS - New Addition */}
+                  <Link href="/dashboard/voice-sos" passHref>
+                    <Button variant='ghost' className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700" onClick={toggleSidebar}>
+                      <Mic className="h-4 w-4 mr-3" />Voice SOS
+                      <Badge className="ml-auto bg-red-100 text-red-800 text-xs">Emergency</Badge>
+                    </Button>
+                  </Link>
                   <Link href="/dashboard/safe-path" passHref>
                     <Button variant='ghost' className="w-full justify-start" onClick={toggleSidebar}>
                       <Route className="h-4 w-4 mr-3" />{t('safe_path_guide')}
@@ -227,6 +234,12 @@ export default function DashboardPage() {
                       <Users className="h-4 w-4 mr-3" />{t('community_help')}
                     </Button>
                   </Link>
+                </nav>
+              </div>
+
+              <div className="p-4 border-t border-gray-200">
+                <h4 className="font-medium text-gray-900 mb-3 text-sm">{t('account_settings')}</h4>
+                <nav className="space-y-1">
                   <Link href="/profile" passHref>
                      <Button variant='ghost' className="w-full justify-start" onClick={toggleSidebar}>
                       <User className="h-4 w-4 mr-3" />{t('profile_settings')}

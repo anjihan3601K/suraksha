@@ -1,26 +1,19 @@
 
-import { initializeApp } from 'firebase/app';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration.
+// Your web app's Firebase configuration
 const firebaseConfig = {
-<<<<<<< HEAD
   apiKey: "AIzaSyBI0DFgPxXtB1RjdrBghciy2Rym0ecCrz0",
   authDomain: "studio-5841216832-7f12e.firebaseapp.com",
   projectId: "studio-5841216832-7f12e",
-  storageBucket: "studio-5841216832-7f12e.appspot.com",
+  storageBucket: "studio-5841216832-7f12e.firebasestorage.app",
   messagingSenderId: "611615799432",
   appId: "1:611615799432:web:b19329f8f5e80d4dfcc73d"
-=======
-  projectId: '##############',
-  appId: '1:##############,
-  apiKey: '#########',
-  authDomain: '###########',
-  measurementId: '',
-  messagingSenderId: '#######',
->>>>>>> 06e2fb6931aab2d4564ad21739943bdd31253614
 };
-
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
