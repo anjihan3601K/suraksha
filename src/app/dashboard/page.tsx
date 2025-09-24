@@ -3,6 +3,7 @@
 import { EmergencyControls } from "@/components/dashboard/EmergencyControls";
 import { AlertsFeed } from "@/components/dashboard/AlertsFeed";
 import { SafetyIndex } from "@/components/dashboard/SafetyIndex";
+import { VoiceSOS } from "@/components/dashboard/VoiceSOS";
 
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import Link from "next/link";
@@ -24,7 +25,7 @@ import {
   LogOut,
   Users,
   Route,
-  Mic // Added for Voice SOS
+  MicOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +33,14 @@ import { Badge } from "@/components/ui/badge";
 import { t } from '@/lib/language';
 
 export default function DashboardPage() {
+  // new: expose userId (Firestore doc id = email) for VoiceSOS component
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const email = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
+    if (email) setUserId(email);
+  }, []);
+
   // Alert banner state
   const [latestAlert, setLatestAlert] = useState<any>(null);
   const [alertLoading, setAlertLoading] = useState(true);
@@ -85,8 +94,21 @@ export default function DashboardPage() {
     }
   }, []);
 
+
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
+  };
+
+  // request stop event visual state (brief)
+  const [stopRequested, setStopRequested] = useState(false);
+
+  const handleVoiceStop = () => {
+    // notify any VoiceSOS component (or other listeners) to stop listening
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("voice-sos-stop"));
+    }
+    setStopRequested(true);
+    setTimeout(() => setStopRequested(false), 800);
   };
 
   return (
@@ -215,15 +237,8 @@ export default function DashboardPage() {
               </div>
 
               <div className="p-4 border-t border-gray-200">
-                <h4 className="font-medium text-gray-900 mb-3 text-sm">{t('emergency_tools')}</h4>
+                <h4 className="font-medium text-gray-900 mb-3 text-sm">{t('tools_and_features')}</h4>
                 <nav className="space-y-1">
-                  {/* Voice SOS - New Addition */}
-                  <Link href="/dashboard/voice-sos" passHref>
-                    <Button variant='ghost' className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700" onClick={toggleSidebar}>
-                      <Mic className="h-4 w-4 mr-3" />Voice SOS
-                      <Badge className="ml-auto bg-red-100 text-red-800 text-xs">Emergency</Badge>
-                    </Button>
-                  </Link>
                   <Link href="/dashboard/safe-path" passHref>
                     <Button variant='ghost' className="w-full justify-start" onClick={toggleSidebar}>
                       <Route className="h-4 w-4 mr-3" />{t('safe_path_guide')}
@@ -234,12 +249,6 @@ export default function DashboardPage() {
                       <Users className="h-4 w-4 mr-3" />{t('community_help')}
                     </Button>
                   </Link>
-                </nav>
-              </div>
-
-              <div className="p-4 border-t border-gray-200">
-                <h4 className="font-medium text-gray-900 mb-3 text-sm">{t('account_settings')}</h4>
-                <nav className="space-y-1">
                   <Link href="/profile" passHref>
                      <Button variant='ghost' className="w-full justify-start" onClick={toggleSidebar}>
                       <User className="h-4 w-4 mr-3" />{t('profile_settings')}
@@ -275,8 +284,35 @@ export default function DashboardPage() {
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('emergency_dashboard')}</h1>
                 <p className="text-gray-600">{t('dashboard_desc')}</p>
               </div>
-              <div className="bg-white rounded-xl shadow p-6">
-                <EmergencyControls t={t} />
+              {/* Emergency controls + Voice SOS side-by-side on large screens */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white rounded-xl shadow p-6">
+                  <EmergencyControls t={t} />
+                </div>
+                {userId && (
+                  <div className="bg-white rounded-xl shadow p-6">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="text-sm font-medium text-gray-700">Voice SOS</div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleVoiceStop}
+                        className="text-red-600"
+                        aria-label="Stop listening"
+                      >
+                        <MicOff className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <VoiceSOS
+                      userId={userId}
+                      userDetails="John Doe, +91-9876543210"
+                      locationData="Hyderabad, India"
+                    />
+                    {stopRequested && (
+                      <div className="mt-3 text-xs text-gray-500">Stop requested</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                  <AlertsFeed t={t} />
@@ -298,6 +334,30 @@ export default function DashboardPage() {
           )}
         </main>
       </div>
+
+      {/* 
+      <div className="fixed right-6 top-24 z-50 pointer-events-auto">
+        {sosState === 'listening' && (
+          <div className="bg-white/95 backdrop-blur-sm px-4 py-2 rounded-lg shadow flex items-center space-x-3 animate-pulse">
+            <Loader2 className="h-5 w-5 animate-spin text-red-600" />
+            <div className="text-sm font-medium text-red-700">Listening… Say "HELP"</div>
+            <Button size="sm" variant="ghost" onClick={stopListening}>Stop</Button>
+          </div>
+        )}
+        {sosState === 'triggered' && (
+          <div className="bg-red-600/95 text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3">
+            <span className="inline-block w-3 h-3 bg-white rounded-full animate-pulse" />
+            <div className="text-sm font-semibold">SOS triggered successfully</div>
+          </div>
+        )}
+        {sosState === 'completed' && (
+          <div className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
+            <div className="font-semibold">Completed</div>
+            <div className="text-sm">Voice processed</div>
+          </div>
+        )}
+      </div>
+      */}
     </div>
   );
 }

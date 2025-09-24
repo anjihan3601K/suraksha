@@ -8,7 +8,7 @@ export default function VoiceSOSPage() {
       <AppHeader />
       <main className="flex-1 p-4 md:p-6 lg:p-8 flex justify-center">
         <div className="w-full max-w-lg">
-          <VoiceSOS />
+          <VoiceSOS userId="your-user-id" />
         </div>
       </main>
     </div>
