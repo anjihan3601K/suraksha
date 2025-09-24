@@ -1,0 +1,19 @@
+
+"use client";
+import { AppHeader } from "@/components/shared/AppHeader";
+import { AlertsFeed } from "@/components/dashboard/AlertsFeed";
+import { t } from "@/lib/language";
+import { Card, CardContent } from "@/components/ui/card";
+
+export default function AlertsPage() {
+  return (
+    <div className="flex flex-col min-h-screen bg-background">
+      <AppHeader />
+      <main className="flex-1 p-4 md:p-6 lg:p-8 flex justify-center">
+        <div className="w-full max-w-4xl">
+          <AlertsFeed t={t} />
+        </div>
+      </main>
+    </div>
+  );
+}
