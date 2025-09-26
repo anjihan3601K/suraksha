@@ -25,6 +25,7 @@ import {
   LogOut,
   Users,
   Route,
+  Mic,
   MicOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ import { Badge } from "@/components/ui/badge";
 import { t } from '@/lib/language';
 
 export default function DashboardPage() {
+  // voice activation state for showing stop button beside activate
+  const [voiceActive, setVoiceActive] = useState(false);
   // new: expose userId (Firestore doc id = email) for VoiceSOS component
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -108,7 +111,16 @@ export default function DashboardPage() {
       window.dispatchEvent(new CustomEvent("voice-sos-stop"));
     }
     setStopRequested(true);
+    setVoiceActive(false); // immediately hide stop button when user clicks
     setTimeout(() => setStopRequested(false), 800);
+  };
+  
+  const handleVoiceStart = () => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("voice-sos-start"));
+    }
+    setStopRequested(false);
+    setVoiceActive(true);
   };
 
   return (
@@ -293,21 +305,31 @@ export default function DashboardPage() {
                   <div className="bg-white rounded-xl shadow p-6">
                     <div className="flex items-start justify-between mb-3">
                       <div className="text-sm font-medium text-gray-700">Voice SOS</div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleVoiceStop}
-                        className="text-red-600"
-                        aria-label="Stop listening"
-                      >
-                        <MicOff className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center space-x-2">
+                        {!voiceActive ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleVoiceStart}
+                            className="text-green-600"
+                            aria-label="Activate listening"
+                          >
+                            <Mic className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleVoiceStop}
+                            className="text-red-600"
+                            aria-label="Stop listening"
+                          >
+                            <MicOff className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <VoiceSOS
-                      userId={userId}
-                      userDetails="John Doe, +91-9876543210"
-                      locationData="Hyderabad, India"
-                    />
+                    <VoiceSOS userId={userId} />
                     {stopRequested && (
                       <div className="mt-3 text-xs text-gray-500">Stop requested</div>
                     )}
