@@ -93,7 +93,7 @@ export default function UIShowcasePage() {
                     <Progress value={progress} />
                     <Slider defaultValue={[progress]} max={100} step={1} onValueChange={(value) => setProgress(value[0])} />
                 </div>
-            </Showcase.section>
+            </ShowcaseSection>
           </div>
 
           <ShowcaseSection title="Buttons">

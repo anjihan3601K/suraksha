@@ -51,7 +51,7 @@ export default function RegisterTeamPage() {
         })),
         createdAt: serverTimestamp(),
         createdBy:
-          typeof window !== "undefined" ? localStorage.getItem("userEmail") : null,
+          typeof window !== "undefined" ? sessionStorage.getItem("userEmail") : null,
       });
       router.push("/admin/rescue-allocation");
     } catch (err) {

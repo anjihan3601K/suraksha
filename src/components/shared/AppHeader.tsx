@@ -3,8 +3,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 import {
   ShieldCheck,
   User,
@@ -16,7 +17,7 @@ import {
   Megaphone,
   BarChart,
   Wand,
-  Hospital
+  Hospital,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,54 +40,70 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const checkUser = async () => {
-      if (typeof window !== 'undefined') {
-        const email = localStorage.getItem('userEmail');
+      if (typeof window !== "undefined") {
+        const email = auth.currentUser?.email ?? sessionStorage.getItem("userEmail");
+        const uid = auth.currentUser?.uid ?? sessionStorage.getItem("userUid");
+        const role = sessionStorage.getItem("userRole");
         setUserEmail(email);
-        if (email) {
-          try {
-            const adminDocRef = doc(db, "admins", email);
-            const adminDoc = await getDoc(adminDocRef);
-            setIsAdmin(adminDoc.exists());
-          } catch (error) {
-            console.error("Error checking admin status:", error);
-            setIsAdmin(false);
+        setUserRole(role);
+
+        if (role === "official") {
+          setIsAdmin(true);
+        } else {
+          let isAdminDoc = false;
+          if (uid) {
+            try {
+              const adminByUid = await getDoc(doc(db, "admins", uid));
+              isAdminDoc = adminByUid.exists();
+            } catch (error) {
+              console.error("Error checking admin status by UID:", error);
+            }
           }
+
+          if (!isAdminDoc && email) {
+            try {
+              const adminDocs = await getDocs(query(collection(db, "admins"), where("email", "==", email)));
+              isAdminDoc = !adminDocs.empty;
+            } catch (error) {
+              console.error("Error checking admin status by email:", error);
+            }
+          }
+
+          setIsAdmin(isAdminDoc);
         }
       }
       setIsLoading(false);
-    }
+    };
     checkUser();
   }, [pathname]);
 
   const getAvatarFallback = () => {
-    if (isAdmin) return 'A';
+    if (isAdmin) return "A";
     if (userEmail) return userEmail.charAt(0).toUpperCase();
-    return 'U';
-  }
-  
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('userEmail');
+    return "U";
+  };
+
+  const handleLogout = async () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("userEmail");
+      sessionStorage.removeItem("userUid");
+      sessionStorage.removeItem("userRole");
     }
-    router.push('/login');
-  }
+    await signOut(auth);
+    router.push("/");
+  };
 
   if (isLoading) {
     return (
       <header className="sticky top-0 z-50 flex h-16 items-center justify-between gap-4 border-b bg-card px-4 md:px-6 shadow-sm">
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-2 text-lg font-semibold md:text-base"
-          prefetch={false}
-        >
+        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold md:text-base" prefetch={false}>
           <ShieldCheck className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold font-headline text-primary">
-            suraksha
-          </span>
+          <span className="text-xl font-bold font-headline text-primary">suraksha</span>
         </Link>
         <div className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
@@ -109,19 +126,19 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
             <DropdownMenuContent align="start">
               <DropdownMenuLabel>Admin Panel</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setAdminView('dashboard')}>
+              <DropdownMenuItem onClick={() => setAdminView("dashboard")}>
                 <LayoutDashboard className="mr-2 h-4 w-4" />
                 <span>Dashboard</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAdminView('broadcasts')}>
+              <DropdownMenuItem onClick={() => setAdminView("broadcasts")}>
                 <Megaphone className="mr-2 h-4 w-4" />
                 <span>Broadcasts</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAdminView('reports')}>
+              <DropdownMenuItem onClick={() => setAdminView("reports")}>
                 <BarChart className="mr-2 h-4 w-4" />
                 <span>User Reports</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAdminView('predict')}>
+              <DropdownMenuItem onClick={() => setAdminView("predict")}>
                 <Wand className="mr-2 h-4 w-4" />
                 <span>Predict Today</span>
               </DropdownMenuItem>
@@ -135,15 +152,9 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        <Link
-          href={isAdmin ? "/admin/dashboard" : "/dashboard"}
-          className="flex items-center gap-2 text-lg font-semibold md:text-base"
-          prefetch={false}
-        >
+        <Link href={isAdmin ? "/admin/dashboard" : "/dashboard"} className="flex items-center gap-2 text-lg font-semibold md:text-base" prefetch={false}>
           <ShieldCheck className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold font-headline text-primary">
-            suraksha
-          </span>
+          <span className="text-xl font-bold font-headline text-primary">suraksha</span>
         </Link>
       </div>
       <div className="flex items-center gap-4">
@@ -157,17 +168,13 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full">
               <Avatar>
-                <AvatarImage src={`https://picsum.photos/seed/${userEmail || 'user'}/32/32`} />
-                <AvatarFallback>
-                  {getAvatarFallback()}
-                </AvatarFallback>
+                <AvatarImage src={`https://picsum.photos/seed/${userEmail || "user"}/32/32`} />
+                <AvatarFallback>{getAvatarFallback()}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>
-              {isAdmin ? "Official Account" : "My Account"}
-            </DropdownMenuLabel>
+            <DropdownMenuLabel>{isAdmin ? "Official Account" : "My Account"}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/profile" prefetch={false}>
@@ -175,7 +182,7 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
                 <span>Profile</span>
               </Link>
             </DropdownMenuItem>
-            
+
             {isAdmin && (
               <DropdownMenuItem asChild>
                 <Link href="/ui-showcase" prefetch={false}>
@@ -184,9 +191,9 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
                 </Link>
               </DropdownMenuItem>
             )}
-            
+
             {isAdmin ? (
-               <DropdownMenuItem asChild>
+              <DropdownMenuItem asChild>
                 <Link href="/dashboard" prefetch={false}>
                   <LayoutDashboard className="mr-2 h-4 w-4" />
                   <span>Switch to User View</span>
@@ -195,11 +202,11 @@ export function AppHeader({ setAdminView }: AppHeaderProps) {
             ) : (
               userEmail && (
                 <DropdownMenuItem asChild>
-                <Link href="/admin/dashboard" prefetch={false}>
-                  <Shield className="mr-2 h-4 w-4" />
-                  <span>Switch to Admin View</span>
-                </Link>
-              </DropdownMenuItem>
+                  <Link href="/admin/dashboard" prefetch={false}>
+                    <Shield className="mr-2 h-4 w-4" />
+                    <span>Switch to Admin View</span>
+                  </Link>
+                </DropdownMenuItem>
               )
             )}
 

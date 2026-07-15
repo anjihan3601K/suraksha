@@ -16,8 +16,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { db } from "@/lib/firebase";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { collection, doc, getDoc, getDocs, query, updateDoc, serverTimestamp, where } from "firebase/firestore";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 
@@ -29,8 +29,11 @@ export function EmergencyControls({ t }: EmergencyControlsProps) {
     const { toast } = useToast();
 
     const updateUserStatus = async (status: "Safe" | "Emergency") => {
-        const userEmail = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
-        if (!userEmail) {
+        const authUser = auth.currentUser;
+        const userUid = authUser?.uid ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userUid') : null);
+        const userEmail = authUser?.email ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userEmail') : null);
+
+        if (!userUid && !userEmail) {
             toast({
                 variant: "destructive",
                 title: "Not Authenticated",
@@ -40,8 +43,29 @@ export function EmergencyControls({ t }: EmergencyControlsProps) {
         }
 
         try {
-            const userDocRef = doc(db, "users", userEmail);
-            const updateData: any = { 
+            let userDocRef;
+            if (userUid) {
+                const candidateRef = doc(db, "users", userUid);
+                const candidateSnap = await getDoc(candidateRef);
+                if (candidateSnap.exists()) {
+                    userDocRef = candidateRef;
+                }
+            }
+
+            if (!userDocRef && userEmail) {
+                const usersQuery = query(collection(db, "users"), where("email", "==", userEmail));
+                const usersSnapshot = await getDocs(usersQuery);
+                if (usersSnapshot.empty) {
+                    throw new Error("User document not found");
+                }
+                userDocRef = usersSnapshot.docs[0].ref;
+            }
+
+            if (!userDocRef) {
+                throw new Error("User document not found");
+            }
+
+            const updateData: any = {
                 status: status,
                 lastKnownLocation: status === "Emergency" ? "Unknown (SOS Triggered)" : "Safe",
             };

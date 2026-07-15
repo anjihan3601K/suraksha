@@ -5,11 +5,10 @@ import { AlertsFeed } from "@/components/dashboard/AlertsFeed";
 import { SafetyIndex } from "@/components/dashboard/SafetyIndex";
 import { VoiceSOS } from "@/components/dashboard/VoiceSOS";
 
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, orderBy, where } from "firebase/firestore";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { 
   Loader2, 
   User, 
@@ -40,8 +39,10 @@ export default function DashboardPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const email = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
-    if (email) setUserId(email);
+    const uid = auth.currentUser?.uid ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userUid') : null);
+    if (uid) {
+      setUserId(uid);
+    }
   }, []);
 
   // Alert banner state
@@ -67,16 +68,28 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setIsClient(true);
-    const email = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
-    if (email) {
+    const authUser = auth.currentUser;
+    const userUid = authUser?.uid ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userUid') : null);
+    const email = authUser?.email ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userEmail') : null);
+    if (userUid || email) {
       const fetchUser = async () => {
         try {
-          const userDocRef = doc(db, 'users', email);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
+          let userDoc = null;
+          if (userUid) {
+            const userDocRef = doc(db, 'users', userUid);
+            const userSnapshot = await getDoc(userDocRef);
+            if (userSnapshot.exists()) userDoc = userSnapshot;
+          }
+
+          if (!userDoc && email) {
+            const usersQuery = query(collection(db, 'users'), where('email', '==', email));
+            const usersSnapshot = await getDocs(usersQuery);
+            if (!usersSnapshot.empty) userDoc = usersSnapshot.docs[0];
+          }
+
+          if (userDoc && userDoc.exists()) {
             setUser(userDoc.data());
-          } else {
-            // If user doc not found, check admins collection
+          } else if (email) {
             const adminDocRef = doc(db, 'admins', email);
             const adminDoc = await getDoc(adminDocRef);
             if (adminDoc.exists()) {

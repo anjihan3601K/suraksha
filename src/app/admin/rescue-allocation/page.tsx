@@ -129,9 +129,8 @@ export default function RescueAllocationPage() {
           skills: m.skills?.trim() || "",
         })),
         updatedAt: serverTimestamp(),
-        updatedBy: localStorage.getItem("userEmail"),
+        updatedBy: typeof window !== "undefined" ? sessionStorage.getItem("userEmail") : null,
       });
-
       setShowEditTeam(false);
       setEditingTeam(null);
       toast({ title: "Success", description: "Team updated successfully." });
@@ -164,24 +163,18 @@ export default function RescueAllocationPage() {
     setAddingResource(true);
     try {
       await addDoc(collection(db, "ambulances"), {
-        ...newAmbulance,
         driver: newAmbulance.driver.trim(),
         phone: newAmbulance.phone.trim(),
         eta: newAmbulance.eta.trim() || "Unknown",
         status: "available",
         createdAt: serverTimestamp(),
-        createdBy: localStorage.getItem("userEmail"),
+        createdBy: typeof window !== "undefined" ? sessionStorage.getItem("userEmail") : null,
       });
 
-      // Update local state
       const newId = `AMB-${String(mockResources.ambulances.length + 1).padStart(3, '0')}`;
       setMockResources(prev => ({
         ...prev,
-        ambulances: [...prev.ambulances, { 
-          id: newId, 
-          ...newAmbulance, 
-          status: "available" 
-        }]
+        ambulances: [...prev.ambulances, { id: newId, driver: newAmbulance.driver.trim(), phone: newAmbulance.phone.trim(), eta: newAmbulance.eta.trim() || "Unknown", status: "available" }]
       }));
 
       setNewAmbulance({ driver: "", phone: "", eta: "" });
@@ -205,23 +198,18 @@ export default function RescueAllocationPage() {
     setAddingResource(true);
     try {
       await addDoc(collection(db, "safety_tools"), {
-        ...newTool,
         name: newTool.name.trim(),
+        quantity: newTool.quantity,
         location: newTool.location.trim() || "Storage",
         reserved: 0,
         createdAt: serverTimestamp(),
-        createdBy: localStorage.getItem("userEmail"),
+        createdBy: typeof window !== "undefined" ? sessionStorage.getItem("userEmail") : null,
       });
 
-      // Update local state
       const newId = `TOOL-${String(mockResources.tools.length + 1).padStart(2, '0')}`;
       setMockResources(prev => ({
         ...prev,
-        tools: [...prev.tools, { 
-          id: newId, 
-          ...newTool, 
-          reserved: 0 
-        }]
+        tools: [...prev.tools, { id: newId, name: newTool.name.trim(), quantity: newTool.quantity, location: newTool.location.trim() || "Storage", reserved: 0 }]
       }));
 
       setNewTool({ name: "", quantity: 0, location: "" });

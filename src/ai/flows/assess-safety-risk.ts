@@ -68,7 +68,16 @@ const assessSafetyRiskFlow = ai.defineFlow(
     outputSchema: AssessSafetyRiskOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    try {
+      const {output} = await prompt(input);
+      return output!;
+    } catch (error: any) {
+      console.error("AI quota or generation error:", error);
+      return {
+        safetyScore: 50,
+        riskLevel: "Moderate",
+        recommendation: "AI analysis is temporarily unavailable due to quota limits. Please refresh after a few minutes.",
+      };
+    }
   }
 );

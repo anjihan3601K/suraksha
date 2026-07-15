@@ -14,8 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Map, Route, Clock, AlertTriangle, Loader2, Pin, MapPin, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import dynamic from "next/dynamic";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 
 const DynamicMap = dynamic(() => import('@/components/dashboard/DynamicMap'), {
@@ -44,6 +44,7 @@ export function SafePath() {
   const [result, setResult] = useState<GetSafePathOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+  const [geoStartCoords, setGeoStartCoords] = useState<[number, number] | null>(null);
   const { toast } = useToast();
   const router = useRouter();
   const [isClient, setIsClient] = useState(false);
@@ -80,6 +81,7 @@ export function SafePath() {
         const { latitude, longitude } = position.coords;
         const locationString = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
         form.setValue("currentLocation", locationString, { shouldValidate: true });
+        setGeoStartCoords([latitude, longitude]);
         setIsFetchingLocation(false);
         if (showToast) {
             toast({ title: "Location Fetched", description: "Your current location has been filled in." });
@@ -101,40 +103,64 @@ export function SafePath() {
   };
   
   useEffect(() => {
-      if (isClient) {
-          const online = navigator.onLine;
-          setIsOnline(online);
-          
-          const handleOnline = () => setIsOnline(true);
-          const handleOffline = () => setIsOnline(false);
-          window.addEventListener('online', handleOnline);
-          window.addEventListener('offline', handleOffline);
+      if (!isClient) {
+          return;
+      }
 
-          if (online) {
-              const userEmail = localStorage.getItem('userEmail');
-              if (userEmail) {
-                  const userDocRef = doc(db, "users", userEmail);
-                  getDoc(userDocRef).then(userDoc => {
-                      if (userDoc.exists() && userDoc.data().address) {
-                          form.setValue("currentLocation", userDoc.data().address);
-                      } else {
-                          fetchLocation(false);
-                      }
-                  }).catch(() => fetchLocation(false));
-              } else {
-                  fetchLocation(false);
+      const online = navigator.onLine;
+      setIsOnline(online);
+
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      const authUser = auth.currentUser;
+      const userUid = authUser?.uid ?? sessionStorage.getItem('userUid');
+      const userEmail = authUser?.email ?? sessionStorage.getItem('userEmail');
+      const resolveUserLocation = async () => {
+          if (userUid) {
+              const userDocRef = doc(db, "users", userUid);
+              const userDoc = await getDoc(userDocRef);
+              if (userDoc.exists() && userDoc.data().address) {
+                  const address = userDoc.data().address as string;
+                  form.setValue("currentLocation", address);
+                  const parsed = parseCoords(address);
+                  if (parsed) setGeoStartCoords(parsed);
+                  return;
               }
           }
+          if (userEmail) {
+              const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+              const usersSnapshot = await getDocs(usersQuery);
+              if (!usersSnapshot.empty && usersSnapshot.docs[0].exists()) {
+                  const userDoc = usersSnapshot.docs[0];
+                  if (userDoc.data().address) {
+                      const address = userDoc.data().address as string;
+                      form.setValue("currentLocation", address);
+                      const parsed = parseCoords(address);
+                      if (parsed) setGeoStartCoords(parsed);
+                      return;
+                  }
+              }
+          }
+          fetchLocation(false);
+      };
 
-          return () => {
-              window.removeEventListener('online', handleOnline);
-              window.removeEventListener('offline', handleOffline);
-          };
+      if (online) {
+          resolveUserLocation().catch(() => fetchLocation(false));
+      } else {
+          fetchLocation(false);
       }
+
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+      };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isClient]);
 
-  const startCoords = result ? parseCoords(form.getValues("currentLocation")) : null;
+  const startCoords = result ? (geoStartCoords ?? parseCoords(form.getValues("currentLocation"))) : null;
   const endCoords = result?.destinationCoords ? [result.destinationCoords.lat, result.destinationCoords.lng] as [number, number] : null;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -149,10 +175,12 @@ export function SafePath() {
     try {
       const res = await getSafePath(values);
       setResult(res);
+      if (parsedStart) {
+          setGeoStartCoords(parsedStart);
+      }
 
-      const parsedDestination = [res.destinationCoords.lat, res.destinationCoords.lng];
-      if (!parsedStart || !parsedDestination) {
-          toast({ variant: "destructive", title: "Cannot Display on Map", description: "Could not determine exact coordinates for the route. Please check the locations." });
+      if (!parsedStart) {
+          toast({ variant: "destructive", title: "Cannot Display on Map", description: "Could not determine exact coordinates for the route. Please enter coordinates or use the location picker." });
       }
 
     } catch (error) {
@@ -315,7 +343,12 @@ export function SafePath() {
             </div>
              {startCoords && endCoords && (
                 <div className="aspect-video w-full rounded-md overflow-hidden border">
-                   <DynamicMap start={startCoords} end={endCoords} pathString={result.safePath} />
+                   <DynamicMap
+                     key={`${startCoords[0]}-${startCoords[1]}-${endCoords[0]}-${endCoords[1]}`}
+                     start={startCoords}
+                     end={endCoords}
+                     pathString={result.safePath}
+                   />
                 </div>
              )}
           </div>

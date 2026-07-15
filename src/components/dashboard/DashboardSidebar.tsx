@@ -19,7 +19,6 @@ import {
   Handshake,
   LifeBuoy,
 } from "lucide-react";
-import type { Feature } from "@/app/dashboard/page";
 
 interface DashboardSidebarProps {
   featureLabels: {
@@ -39,7 +38,7 @@ export function DashboardSidebar({
   const { setOpenMobile } = useSidebar();
   
   const features: {
-    id: Feature;
+    id: string;
     label: string;
     icon: React.ReactNode;
     onlineOnly: boolean;

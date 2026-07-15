@@ -12,8 +12,8 @@ import { Camera, Send, Loader2, MapPin, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
 const formSchema = z.object({
@@ -71,17 +71,27 @@ export function PhotoReporter() {
   
   useEffect(() => {
     const fetchUserAddressOrLocation = async () => {
-      const userEmail = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
-      if (userEmail) {
-        const userDocRef = doc(db, "users", userEmail);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists() && userDoc.data().address) {
-          form.setValue("location", userDoc.data().address);
-        } else {
-          fetchLocation(); // Fetch GPS if no address
-        }
+      let userDoc: any = null;
+      const authUser = auth.currentUser;
+      const userUid = authUser?.uid ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userUid') : null);
+      const userEmail = authUser?.email ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userEmail') : null);
+
+      if (userUid) {
+        const userDocRef = doc(db, "users", userUid);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) userDoc = userSnap;
+      }
+
+      if (!userDoc && userEmail) {
+        const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+        const usersSnapshot = await getDocs(usersQuery);
+        if (!usersSnapshot.empty) userDoc = usersSnapshot.docs[0];
+      }
+
+      if (userDoc?.exists() && (userDoc.data() as any).address) {
+        form.setValue("location", (userDoc.data() as any).address);
       } else {
-         fetchLocation(); // Fetch GPS for anonymous users
+        fetchLocation(); // Fetch GPS for anonymous users or no address
       }
     };
     fetchUserAddressOrLocation();
@@ -103,9 +113,11 @@ export function PhotoReporter() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
-    const userEmail = typeof window !== 'undefined' ? localStorage.getItem('userEmail') : null;
+    const authUser = auth.currentUser;
+    const userUid = authUser?.uid ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userUid') : null);
+    const userEmail = authUser?.email ?? (typeof window !== 'undefined' ? sessionStorage.getItem('userEmail') : null);
 
-    if (!userEmail) {
+    if (!userUid && !userEmail) {
         toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to submit a report."});
         setIsLoading(false);
         return;
@@ -118,16 +130,36 @@ export function PhotoReporter() {
     }
     
     try {
-        const userRef = doc(db, "users", userEmail);
-        const userSnap = await getDoc(userRef);
-        const userName = userSnap.exists() ? userSnap.data().name : "Anonymous";
-        const userAddress = userSnap.exists() ? userSnap.data().address : "";
+        let userRef;
+        if (userUid) {
+          const candidateRef = doc(db, "users", userUid);
+          const candidateSnap = await getDoc(candidateRef);
+          if (candidateSnap.exists()) {
+            userRef = candidateRef;
+          }
+        }
+
+        if (!userRef && userEmail) {
+          const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+          const usersSnapshot = await getDocs(usersQuery);
+          if (!usersSnapshot.empty) {
+            userRef = usersSnapshot.docs[0].ref;
+          }
+        }
+
+        const userSnap = userRef ? await getDoc(userRef) : null;
+        const userName = userSnap?.exists() ? (userSnap.data() as any).name : "Anonymous";
+        const userAddress = userSnap?.exists() ? (userSnap.data() as any).address : "";
+        const reporterEmail = userEmail || "Unknown";
+        const reportedFrom = values.location;
 
         await addDoc(collection(db, "reports"), {
             description: values.description,
             imageUrl: preview, // Use the preview data URL
             location: values.location,
             userName: userName,
+            reporterEmail,
+            reportedFrom,
             timestamp: serverTimestamp(),
             imageHint: "user report", // Generic hint
         });

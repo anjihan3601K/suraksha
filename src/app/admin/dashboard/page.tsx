@@ -32,7 +32,9 @@ import {
   Zap,
   Calendar,
   Search,
-  ArrowLeft
+  ArrowLeft,
+  Megaphone,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -244,7 +246,7 @@ export default function AdminDashboardPage(): JSX.Element {
       const response = await fetch(`https://api.predicthq.com/v1/events/?${params}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_PREDICTHQ_API_KEY || 'KIUl41eW6kuvAqBcGGjTkA_eFdvH7dJyipQhm62n'}`,
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_PREDICTHQ_API_KEY || ''}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         }
@@ -293,7 +295,7 @@ export default function AdminDashboardPage(): JSX.Element {
       <button
         aria-label="Open admin menu"
         onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-60 md:hidden p-2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20"
+        className="fixed top-4 left-4 z-[100] p-2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20"
       >
         <Menu className="h-5 w-5 text-slate-600" />
       </button>
@@ -338,16 +340,38 @@ export default function AdminDashboardPage(): JSX.Element {
                 </Button>
               </Link>
 
-              <Link href="/admin/alerts" passHref>
+              <Button
+                variant={activeView === "broadcasts" ? "default" : "ghost"}
+                className="w-full justify-start text-slate-600 hover:text-slate-900"
+                onClick={() => {
+                  setActiveView("broadcasts");
+                  toggleSidebar();
+                }}
+              >
+                <Megaphone className="h-4 w-4 mr-3" /> Broadcast Alerts
+              </Button>
+
+              <Link href="/admin/register-official" passHref>
                 <Button
-                  variant="ghost"
+                  variant={activeView === "registerOfficial" ? "default" : "ghost"}
                   className="w-full justify-start text-slate-600 hover:text-slate-900"
                   onClick={() => {
-                    setActiveView("alerts");
                     toggleSidebar();
                   }}
                 >
-                  <AlertTriangle className="h-4 w-4 mr-3" /> Alerts
+                  <Shield className="h-4 w-4 mr-3" /> Register Official
+                </Button>
+              </Link>
+
+              <Link href="/admin/register-helpline" passHref>
+                <Button
+                  variant={activeView === "helpCenter" ? "default" : "ghost"}
+                  className="w-full justify-start text-slate-600 hover:text-slate-900"
+                  onClick={() => {
+                    toggleSidebar();
+                  }}
+                >
+                  <Hospital className="h-4 w-4 mr-3" /> Register Help Center
                 </Button>
               </Link>
 
@@ -366,7 +390,7 @@ export default function AdminDashboardPage(): JSX.Element {
 
               <Link href="/admin/users" passHref>
                 <Button
-                  variant="ghost"
+                  variant={activeView === "users" ? "default" : "ghost"}
                   className="w-full justify-start text-slate-600 hover:text-slate-900"
                   onClick={() => {
                     setActiveView("users");
@@ -376,6 +400,17 @@ export default function AdminDashboardPage(): JSX.Element {
                   <BarChart className="h-4 w-4 mr-3" /> User Stats
                 </Button>
               </Link>
+
+              <Button
+                variant={activeView === "reports" ? "default" : "ghost"}
+                className="w-full justify-start text-slate-600 hover:text-slate-900"
+                onClick={() => {
+                  setActiveView("reports");
+                  toggleSidebar();
+                }}
+              >
+                <MessageSquare className="h-4 w-4 mr-3" /> User Reports
+              </Button>
 
               {/* Check Today Button */}
               <Button

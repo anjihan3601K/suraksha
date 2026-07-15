@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 
 import { AppHeader } from "@/components/shared/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -27,10 +28,10 @@ const formSchema = z.object({
 export default function ProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [isClient, setIsClient] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userUid, setUserUid] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -43,47 +44,62 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
-    setIsClient(true);
-    const email = localStorage.getItem('userEmail');
-    if (!email) {
-      router.push("/login");
-      return;
-    }
-    setUserEmail(email);
-
-    const fetchUserData = async () => {
-      if (!email) return;
-      try {
-        const userDocRef = doc(db, "users", email);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          form.reset({
-            name: userData.name || "",
-            email: userData.email || "",
-            phone: userData.phone || "",
-            address: userData.address || "",
-          });
-        } else {
-          toast({ variant: "destructive", title: "User not found" });
-          router.push('/login');
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        toast({ variant: "destructive", title: "Failed to load profile" });
-      } finally {
-        setIsLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const email = user?.email ?? sessionStorage.getItem("userEmail");
+      if (!email || !user?.uid) {
+        router.push("/login");
+        return;
       }
-    };
+      setUserEmail(email);
+      setUserUid(user.uid);
 
-    fetchUserData();
+      const fetchUserData = async () => {
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            form.reset({
+              name: userData.name || "",
+              email: userData.email || email,
+              phone: userData.phone || "",
+              address: userData.address || "",
+            });
+          } else {
+            const officialDocRef = doc(db, "officials", user.uid);
+            const officialDoc = await getDoc(officialDocRef);
+            if (officialDoc.exists()) {
+              const officialData = officialDoc.data();
+              form.reset({
+                name: officialData.name || "",
+                email: officialData.email || email,
+                phone: officialData.phone || "",
+                address: officialData.address || "",
+              });
+            } else {
+              toast({ variant: "destructive", title: "User not found" });
+              router.push("/login");
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          toast({ variant: "destructive", title: "Failed to load profile" });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchUserData();
+    });
+
+    return () => unsubscribe();
   }, [router, toast, form]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!userEmail) return;
+    if (!userUid) return;
     setIsSaving(true);
     try {
-      const userDocRef = doc(db, "users", userEmail);
+      const userDocRef = doc(db, "users", userUid);
       await updateDoc(userDocRef, {
         name: values.name,
         phone: values.phone,
@@ -112,7 +128,7 @@ export default function ProfilePage() {
             <CardDescription>View and update your personal information.</CardDescription>
           </CardHeader>
           <CardContent>
-            {!isClient || isLoading ? (
+            {isLoading ? (
               <div className="flex justify-center items-center p-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>

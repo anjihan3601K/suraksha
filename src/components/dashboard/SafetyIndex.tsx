@@ -63,10 +63,20 @@ export function SafetyIndex() {
       setIsLoading(true);
       try {
         const activeAlerts = alerts.map(({ title, severity }) => ({ title, severity }));
-        const res = await assessSafetyRisk({ 
-            location: "Central City, USA", // Placeholder location
-            activeAlerts: activeAlerts 
+        const cacheKey = `safetyIndex:${JSON.stringify(activeAlerts)}`;
+        const cached = sessionStorage.getItem(cacheKey);
+
+        if (cached) {
+          setAssessment(JSON.parse(cached));
+          return;
+        }
+
+        const res = await assessSafetyRisk({
+          location: "Central City, USA", // Placeholder location
+          activeAlerts: activeAlerts,
         });
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(res));
         setAssessment(res);
       } catch (error) {
         console.error("Error assessing safety risk:", error);
@@ -76,8 +86,12 @@ export function SafetyIndex() {
       }
     };
 
-    // Rerun assessment when new alerts come in
-    runAssessment();
+    if (alerts.length > 0) {
+      runAssessment();
+    } else {
+      setIsLoading(false);
+      setAssessment(null);
+    }
   }, [alerts, toast]);
 
   const currentRisk = assessment ? riskLevels[assessment.riskLevel as keyof typeof riskLevels] : null;

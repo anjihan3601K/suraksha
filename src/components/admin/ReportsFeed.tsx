@@ -28,6 +28,8 @@ import { useToast } from "@/hooks/use-toast";
 interface Report {
   id: string;
   userName: string;
+  reporterEmail?: string;
+  reportedFrom?: string;
   timestamp: Timestamp;
   description: string;
   imageUrl: string;
@@ -109,14 +111,19 @@ export function ReportsFeed() {
                             <div className="space-y-3">
                                 <div className="flex justify-between items-start">
                                     <div className="space-y-1">
-                                        <div className="flex items-center gap-2 text-sm font-semibold">
-                                            <User className="h-4 w-4" />
-                                            <span>{report.userName}</span>
-                                        </div>
-                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <MapPin className="h-4 w-4" />
-                                            <span>{report.location || 'Location not provided'}</span>
-                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                  <div className="flex items-center gap-2 text-sm font-semibold">
+                                      <User className="h-4 w-4" />
+                                      <span>{report.userName}</span>
+                                      {report.reporterEmail ? (
+                                        <span className="text-xs text-slate-500">({report.reporterEmail})</span>
+                                      ) : null}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <MapPin className="h-4 w-4" />
+                                      <span>{report.reportedFrom || report.location || 'Location not provided'}</span>
+                                  </div>
+                                </div>
                                     </div>
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
                                         <Clock className="h-4 w-4" />

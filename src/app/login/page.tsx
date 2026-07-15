@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { browserSessionPersistence, setPersistence, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,22 +49,21 @@ const initialText = {
   signUpLink: "Sign up",
 };
 
+const SUPER_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || "venkat.kanamarlapudi1906@gmail.com";
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [isClient, setIsClient] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uiText, setUiText] = useState(initialText);
   const [isTranslating, setIsTranslating] = useState(false);
-  
+
   useEffect(() => {
-    setIsClient(true);
-    const savedLanguage = localStorage.getItem('selectedLanguage');
-    if (savedLanguage && savedLanguage !== 'en') {
+    const savedLanguage = window.localStorage.getItem("selectedLanguage");
+    if (savedLanguage && savedLanguage !== "en") {
       handleLanguageChange(savedLanguage);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLanguageChange = async (languageCode: string) => {
@@ -86,13 +86,11 @@ export default function LoginPage() {
       setUiText(newUiText);
     } catch (error) {
       console.error("Translation error:", error);
-      // Don't show a toast, just fallback to English
       setUiText(initialText);
     } finally {
       setIsTranslating(false);
     }
   };
-
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -105,45 +103,87 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
-      const adminDocRef = doc(db, "admins", values.email);
-      const adminDoc = await getDoc(adminDocRef);
+      await setPersistence(auth, browserSessionPersistence);
+      const { user } = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const email = user.email ?? values.email;
 
-      if (adminDoc.exists()) {
-        // This is a potential admin, check password (placeholder)
-        if (values.password === "Sai@2006") {
-           localStorage.setItem('userEmail', values.email);
-           router.push("/admin/dashboard");
-        } else {
-          toast({ variant: "destructive", title: "Invalid Credentials", description: "Please check your password and try again." });
-        }
-        setIsSubmitting(false);
+      if (email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+        sessionStorage.setItem("userEmail", email);
+        sessionStorage.setItem("userUid", user.uid);
+        sessionStorage.setItem("userRole", "official");
+        toast({
+          title: "Login Successful",
+          description: "Welcome back to the admin dashboard.",
+        });
+        router.push("/admin/dashboard");
         return;
       }
-      
-      // If not an admin, check if they are a regular user
-      const userDocRef = doc(db, "users", values.email);
-      const userDoc = await getDoc(userDocRef);
 
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        // In a real app, passwords should be hashed. For this demo, we compare plain text.
-        if (userData.password === values.password) {
-            localStorage.setItem('userEmail', values.email);
-            router.push("/dashboard");
-        } else {
-             toast({ variant: "destructive", title: "Invalid Credentials", description: "Please check your password and try again." });
-        }
-      } else {
-        // User not found in admins or users
-        toast({
-          variant: "destructive",
-          title: "Account Not Found",
-          description: "No account found with this email. Please sign up.",
-        });
+      const [citizenSnap, officialSnap, adminSnap] = await Promise.all([
+        getDocs(query(collection(db, "users"), where("email", "==", email))),
+        getDocs(query(collection(db, "officials"), where("email", "==", email))),
+        getDocs(query(collection(db, "admins"), where("email", "==", email))),
+      ]);
+
+      const [citizenByUid, officialByUid, adminByUid] = await Promise.all([
+        getDoc(doc(db, "users", user.uid)),
+        getDoc(doc(db, "officials", user.uid)),
+        getDoc(doc(db, "admins", user.uid)),
+      ]);
+
+      const citizenDoc = citizenByUid.exists() ? citizenByUid : citizenSnap.docs[0];
+      let officialDoc = officialByUid.exists() ? officialByUid : officialSnap.docs[0];
+      const adminDoc = adminByUid.exists() ? adminByUid : adminSnap.docs[0];
+
+      if (!officialDoc && adminDoc) {
+        officialDoc = adminDoc;
       }
-    } catch (error) {
+
+      if (officialDoc) {
+        sessionStorage.setItem("userEmail", email);
+        sessionStorage.setItem("userUid", user.uid);
+        sessionStorage.setItem("userRole", "official");
+        toast({
+          title: "Login Successful",
+          description: "Welcome back to the official dashboard.",
+        });
+        router.push("/admin/dashboard");
+        return;
+      }
+
+      if (citizenDoc) {
+        sessionStorage.setItem("userEmail", email);
+        sessionStorage.setItem("userUid", user.uid);
+        sessionStorage.setItem("userRole", "citizen");
+        toast({
+          title: "Login Successful",
+          description: "Welcome back to your dashboard.",
+        });
+        router.push("/dashboard");
+        return;
+      }
+
+      await signOut(auth);
+      toast({
+        variant: "destructive",
+        title: "Access Not Found",
+        description: "No matching account was found. If you are an official, contact your super admin for credentials. If you are a citizen, please create an account.",
+      });
+      router.push("/signup");
+    } catch (error: any) {
       console.error("Error logging in:", error);
-      toast({ variant: "destructive", title: "Login Failed", description: "An unexpected error occurred. Please try again." });
+      const friendlyMessage =
+        error?.code === "auth/invalid-credential" ||
+        error?.code === "auth/wrong-password" ||
+        error?.code === "auth/user-not-found"
+          ? "Wrong email or password. Please try again."
+          : error?.message || "An unexpected error occurred. Please try again.";
+
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: friendlyMessage,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -155,62 +195,52 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <ShieldCheck className="mx-auto h-10 w-10 text-primary" />
           <CardTitle className="text-2xl font-headline">{uiText.title}</CardTitle>
-          <CardDescription>
-            {uiText.description}
-          </CardDescription>
+          <CardDescription>{uiText.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          {!isClient ? (
-            <div className="flex justify-center p-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid gap-4">
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{uiText.emailLabel}</FormLabel>
-                          <FormControl>
-                            <Input placeholder="m@example.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{uiText.passwordLabel}</FormLabel>
-                          <FormControl>
-                            <Input type="password" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button type="submit" className="w-full" disabled={isSubmitting || isTranslating}>
-                      {(isSubmitting || isTranslating) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />} 
-                      {isSubmitting ? uiText.loggingInButton : uiText.loginButton}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-              <Separator className="my-6" />
-              <div className="text-center text-sm">
-                {uiText.noAccountText}{" "}
-                <Link href="/signup" className="underline text-primary" prefetch={false}>
-                  {uiText.signUpLink}
-                </Link>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <div className="grid gap-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{uiText.emailLabel}</FormLabel>
+                      <FormControl>
+                        <Input placeholder="m@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{uiText.passwordLabel}</FormLabel>
+                      <FormControl>
+                        <Input type="password" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full" disabled={isSubmitting || isTranslating}>
+                  {isSubmitting || isTranslating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+                  {isSubmitting ? uiText.loggingInButton : uiText.loginButton}
+                </Button>
               </div>
-            </>
-          )}
+            </form>
+          </Form>
+          <Separator className="my-6" />
+          <div className="text-center text-sm">
+            {uiText.noAccountText}{" "}
+            <Link href="/signup" className="underline text-primary" prefetch={false}>
+              {uiText.signUpLink}
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

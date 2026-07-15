@@ -14,6 +14,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { translateUI } from "@/ai/flows/translate-ui";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
 const initialText = {
   // Header
@@ -76,6 +80,9 @@ export default function LandingPage() {
   const { toast } = useToast();
   const [currentDate, setCurrentDate] = useState("");
   const [isClient, setIsClient] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const router = useRouter();
+  const SUPER_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || "venkat.kanamarlapudi1906@gmail.com";
 
   useEffect(() => {
     setIsClient(true);
@@ -86,6 +93,44 @@ export default function LandingPage() {
     if (savedLanguage && savedLanguage !== 'en') {
       handleLanguageChange(savedLanguage);
     }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      try {
+        if (user.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+          router.replace("/admin/dashboard");
+          return;
+        }
+
+        const officialDoc = await getDoc(doc(db, "officials", user.uid));
+        if (officialDoc.exists()) {
+          router.replace("/admin/dashboard");
+          return;
+        }
+
+        const adminDoc = await getDoc(doc(db, "admins", user.uid));
+        if (adminDoc.exists()) {
+          router.replace("/admin/dashboard");
+          return;
+        }
+
+        const citizenDoc = await getDoc(doc(db, "users", user.uid));
+        if (citizenDoc.exists()) {
+          router.replace("/dashboard");
+          return;
+        }
+      } catch (error) {
+        console.error("Error resolving dashboard route:", error);
+      }
+
+      setIsCheckingAuth(false);
+    });
+
+    return () => unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -128,6 +173,17 @@ export default function LandingPage() {
     }
   };
 
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <ShieldCheck className="mx-auto h-10 w-10 text-primary" />
+          <p className="mt-4 text-sm text-muted-foreground">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">

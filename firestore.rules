@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isOfficial() {
+      return isSignedIn() && exists(/databases/$(database)/documents/officials/$(request.auth.uid));
+    }
+
+    function isAdminOrOfficial() {
+      return isAdmin() || isOfficial();
+    }
+
+    match /users/{userId} {
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow list: if isAdminOrOfficial();
+      allow delete: if false;
+    }
+
+    match /admins/{adminId} {
+      allow create, read, list: if isAdmin();
+      allow update, delete: if isAdmin() && request.auth.uid == adminId;
+    }
+
+    match /officials/{officialId} {
+      allow create: if isAdmin();
+      allow read, list: if isAdminOrOfficial();
+      allow update: if isAdmin() || (isOfficial() && request.auth.uid == officialId);
+      allow delete: if isAdmin();
+    }
+
+    match /help-centers/{centerId} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdminOrOfficial();
+    }
+
+    match /alerts/{alertId} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdminOrOfficial();
+    }
+
+    match /reports/{reportId} {
+      allow create: if isSignedIn();
+      allow read, list: if isAdminOrOfficial();
+      allow update, delete: if isAdmin();
+    }
+
+    match /rescue_teams/{teamId} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdminOrOfficial();
+    }
+
+    match /ambulances/{ambulanceId} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdminOrOfficial();
+    }
+
+    match /safety_tools/{toolId} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdminOrOfficial();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

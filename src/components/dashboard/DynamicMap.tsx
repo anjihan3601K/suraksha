@@ -42,69 +42,96 @@ interface DynamicMapProps {
 const DynamicMap = ({ start, end, pathString }: DynamicMapProps) => {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  // Ref for the routing control layer
-  const routingControlRef = useRef<L.Routing.Control | null>(null);
+  const routingControlRef = useRef<any>(null);
+  const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const fallbackRouteRef = useRef<LeafletPolyline | null>(null);
 
   useEffect(() => {
-    // This effect handles map initialization and updates.
-    if (typeof window !== 'undefined' && mapContainerRef.current) {
+    if (typeof window === 'undefined') return;
+    const container = mapContainerRef.current;
+    if (!container) return;
+
+    try {
       if (!mapRef.current) {
-        // Initialize map if it doesn't exist
-        mapRef.current = L.map(mapContainerRef.current, {
-            scrollWheelZoom: false 
+        mapRef.current = L.map(container, {
+          scrollWheelZoom: false,
         }).setView(start, 13);
 
-        // Add the OpenStreetMap tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         }).addTo(mapRef.current);
+
+        markerLayerRef.current = L.layerGroup().addTo(mapRef.current);
       }
 
       const map = mapRef.current;
+      if (!map) return;
 
-      // Clear previous routing control
       if (routingControlRef.current) {
         map.removeControl(routingControlRef.current);
         routingControlRef.current = null;
       }
-      
-      // Initialize the Routing Control using OSRM (Open Source Routing Machine)
-      const routingControl = (L.Routing as any).control({
-          waypoints: [
-              L.latLng(start[0], start[1]),
-              L.latLng(end[0], end[1])
-          ],
-          routeWhileDragging: false,
-          // Use OSRM as the routing engine (OpenStreetMap based)
-          router: (L.Routing as any).osrmv1({
-              serviceUrl: 'https://router.project-osrm.org/route/v1'
-          }),
-          // Customize the route line appearance
-          lineOptions: {
-              styles: [{ color: 'blue', opacity: 0.8, weight: 6 }]
-          },
-          // Hide the instructions panel initially, just show the map and path
-          show: false, 
-          // Use the custom icons for start/end markers
-          createMarker: (i: number, waypoint: any, n: number) => {
-              const icon = i === 0 ? defaultIcon : helpCenterIcon; // i=0 is start, i=n-1 is end
-              return L.marker(waypoint.latLng, { icon: icon });
-          }
+
+      if (markerLayerRef.current) {
+        markerLayerRef.current.clearLayers();
+      }
+      if (fallbackRouteRef.current) {
+        fallbackRouteRef.current.remove();
+        fallbackRouteRef.current = null;
+      }
+
+      L.marker(start, { icon: defaultIcon }).addTo(markerLayerRef.current!);
+      L.marker(end, { icon: helpCenterIcon }).addTo(markerLayerRef.current!);
+
+      const routingApi = (L as any).Routing;
+      if (!routingApi || typeof routingApi.control !== 'function' || typeof routingApi.osrmv1 !== 'function') {
+        fallbackRouteRef.current = L.polyline([start, end], { color: 'red', opacity: 0.8, dashArray: '6 6' }).addTo(map);
+        map.fitBounds(L.latLngBounds([start, end]).pad(0.12));
+        return;
+      }
+
+      const routingControl = routingApi.control({
+        waypoints: [
+          L.latLng(start[0], start[1]),
+          L.latLng(end[0], end[1]),
+        ],
+        routeWhileDragging: false,
+        router: routingApi.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1',
+        }),
+        lineOptions: {
+          styles: [{ color: 'blue', opacity: 0.8, weight: 6 }],
+        },
+        show: false,
+        createMarker: (i: number, waypoint: any) => {
+          const icon = i === 0 ? defaultIcon : helpCenterIcon;
+          return L.marker(waypoint.latLng, { icon });
+        },
       }).addTo(map);
 
       routingControlRef.current = routingControl;
-      
-      // Listen for the route calculation to finish and fit the map bounds to the entire route
+
       routingControl.on('routesfound', (e: any) => {
-          const routes = e.routes;
-          if (routes.length > 0) {
-              const bounds = routes[0].coordinates.reduce(
-                  (b: L.LatLngBounds, p: L.LatLng) => b.extend(p), 
-                  L.latLngBounds(routes[0].coordinates[0], routes[0].coordinates[0])
-              );
-              map.fitBounds(bounds.pad(0.1));
-          }
+        const routes = e.routes;
+        if (routes.length > 0) {
+          const bounds = routes[0].coordinates.reduce(
+            (b: L.LatLngBounds, p: L.LatLng) => b.extend(p),
+            L.latLngBounds(routes[0].coordinates[0], routes[0].coordinates[0])
+          );
+          map.fitBounds(bounds.pad(0.1));
+        }
       });
+
+      routingControl.on('routingerror', () => {
+        if (fallbackRouteRef.current) {
+          fallbackRouteRef.current.remove();
+          fallbackRouteRef.current = null;
+        }
+        fallbackRouteRef.current = L.polyline([start, end], { color: 'red', opacity: 0.8, dashArray: '6 6' }).addTo(map);
+        map.fitBounds(L.latLngBounds([start, end]).pad(0.12));
+      });
+    } catch (error) {
+      console.error('DynamicMap initialization failed:', error);
     }
   }, [start, end, pathString]); // Dependency array: re-run if coordinates change
 

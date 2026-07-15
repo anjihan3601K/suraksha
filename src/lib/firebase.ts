@@ -1,36 +1,37 @@
 
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getAnalytics } from "firebase/analytics";
+import { getApp, getApps, initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBI0DFgPxXtB1RjdrBghciy2Rym0ecCrz0",
-  authDomain: "studio-5841216832-7f12e.firebaseapp.com",
-  projectId: "studio-5841216832-7f12e",
-  storageBucket: "studio-5841216832-7f12e.firebasestorage.app",
-  messagingSenderId: "611615799432",
-  appId: "1:611615799432:web:b19329f8f5e80d4dfcc73d"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ?? "",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID ?? undefined,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
-
-// Enable offline persistence
-try {
-  enableIndexedDbPersistence(db);
-} catch (error: any) {
-  if (error.code === 'failed-precondition') {
-    // Multiple tabs open, persistence can only be enabled in one.
-    // This is a normal scenario.
-    console.warn('Firestore offline persistence could not be enabled, likely due to multiple open tabs.');
-  } else if (error.code === 'unimplemented') {
-    // The browser does not support all of the features required to enable persistence
-    console.warn('The current browser does not support Firestore offline persistence.');
-  }
+// Validate Firebase config before initializing
+const missingConfig = Object.entries(firebaseConfig).filter(
+  ([key, value]) => key !== "measurementId" && !value,
+);
+if (missingConfig.length) {
+  throw new Error(
+    `Missing Firebase environment variables: ${missingConfig
+      .map(([key]) => key)
+      .join(", ")}. ` +
+      "Add them to .env.local using NEXT_PUBLIC_FIREBASE_* names."
+  );
 }
+
+// Initialize Firebase once per app instance
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const analytics = typeof window !== "undefined" ? getAnalytics(app) : null;

@@ -12,6 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import { collection, getDocs, GeoPoint } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { helpCenters as mockHelpCenters } from '@/lib/mock-data';
 
 const GetSafePathInputSchema = z.object({
   currentLocation: z
@@ -98,15 +99,103 @@ const getSafePathFlow = ai.defineFlow(
 
         return {
             name: data.name,
-            location: location,
+            location,
         };
     }).filter(center => center.location); // Only include centers with a location
 
     if (helpCenters.length === 0) {
-        throw new Error("No help centers with location data are available.");
+        // Fall back to mock data when Firestore help centers are not yet registered.
+        helpCenters.push(...mockHelpCenters);
     }
-    
-    const {output} = await prompt({ ...input, helpCenters });
-    return output!;
+
+    const genAiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+    if (!genAiKey) {
+      return createFallbackRoute(input, helpCenters);
+    }
+
+    try {
+      const {output} = await prompt({ ...input, helpCenters });
+      return output!;
+    } catch (error) {
+      return createFallbackRoute(input, helpCenters);
+    }
   }
 );
+
+function parseLocation(location: string) {
+  const normalized = location.replace(/°/g, '').replace(/[NSEW]/gi, '');
+  const parts = normalized.split(',');
+  if (parts.length !== 2) return null;
+  const lat = Number(parts[0].trim());
+  const lng = Number(parts[1].trim());
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  return { lat, lng };
+}
+
+function distance(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const aTerm = sinDLat * sinDLat + sinDLon * sinDLon * Math.cos(lat1) * Math.cos(lat2);
+  return R * 2 * Math.atan2(Math.sqrt(aTerm), Math.sqrt(1 - aTerm));
+}
+
+function getDisasterAdvice(disasterType: string) {
+  switch (disasterType.toLowerCase()) {
+    case 'flood':
+      return 'Avoid low-lying roads, riverbanks, and underpasses; head for higher ground and use major roads when possible.';
+    case 'wildfire':
+      return 'Move away from smoke and flames, avoid dry brush, and travel via cleared, open routes.';
+    case 'earthquake':
+      return 'Use main roads carefully, avoid damaged bridges or unstable structures, and keep away from falling hazards.';
+    case 'tsunami':
+      return 'Move inland and uphill immediately, avoiding the coastline and low-lying areas.';
+    case 'cyclone':
+      return 'Seek shelter inland, avoid flooded roads, and stay away from coastal and exposed zones.';
+    default:
+      return 'Follow major routes toward the chosen help center while avoiding visible hazards and unstable areas.';
+  }
+}
+
+function createFallbackRoute(input: GetSafePathInput, centers: Array<{ name: string; location: string }>) {
+  const current = parseLocation(input.currentLocation);
+  let selectedCenter = centers[0];
+  let destinationCoords = parseLocation(selectedCenter.location);
+
+  if (current) {
+    const nearest = centers.reduce(
+      (best, center) => {
+        const coords = parseLocation(center.location);
+        if (!coords) return best;
+        if (!best) {
+          return { center, coords, dist: distance(current, coords) };
+        }
+        const dist = distance(current, coords);
+        return dist < best.dist ? { center, coords, dist } : best;
+      },
+      null as null | { center: { name: string; location: string }; coords: { lat: number; lng: number }; dist: number }
+    );
+
+    if (nearest) {
+      selectedCenter = nearest.center;
+      destinationCoords = nearest.coords;
+    }
+  }
+
+  if (!destinationCoords) {
+    throw new Error('Could not determine destination coordinates for fallback safe path.');
+  }
+
+  return {
+    destination: selectedCenter.name,
+    destinationCoords,
+    safePath: `From your current location, proceed directly toward ${selectedCenter.name} at coordinates ${destinationCoords.lat}, ${destinationCoords.lng}. ${getDisasterAdvice(input.disasterType)}`,
+    estimatedTime: 'Estimated travel time depends on local conditions, typically 30-90 minutes for nearby help centers.',
+    riskLevel: input.disasterSeverity === 'Extreme' ? 'High' : 'Moderate',
+  };
+}
