@@ -34,7 +34,8 @@ AlertNet is a disaster response and safety portal built with Next.js, Firebase, 
 
 5. **Admin / Official Management**
    - Register helpline centers (`help-centers`)
-   - Register officials (`officials`)
+   - Register officials (`officials`) with email/password credentials
+   - Official registration also creates a parallel record in `users`
    - Manage rescue teams and resources
    - Manage ambulances and safety tools
 
@@ -229,7 +230,8 @@ AlertNet is a disaster response and safety portal built with Next.js, Firebase, 
 2. **Login**
    - User submits form on `/login`
    - `signInWithEmailAndPassword` authenticates user
-   - Role resolution uses Firestore collections
+   - Officials are created by admin with email/password and stored in Firebase Auth
+   - Role resolution uses Firestore collections (`officials`, `admins`, `users`)
    - Session storage saves `userUid`, `userEmail`, `userRole`
    - Redirects based on role
 

@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { deleteApp, getApp, getApps, initializeApp } from "firebase/app";
+import { createUserWithEmailAndPassword, getAuth, inMemoryPersistence, setPersistence, signOut } from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { db, firebaseClientConfig } from "@/lib/firebase";
 
 import { AppHeader } from "@/components/shared/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 const formSchema = z.object({
   name: z.string().min(3, { message: "Official name must be at least 3 characters." }),
   email: z.string().email({ message: "Please enter a valid email address." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
   phone: z.string().min(10, { message: "Please enter a valid phone number." }).optional().or(z.literal("")),
   designation: z.string().optional().or(z.literal("")),
   department: z.string().optional().or(z.literal("")),
@@ -59,10 +62,33 @@ export default function RegisterOfficialPage() {
     },
   });
 
+  async function createSecondaryAuth() {
+    const secondaryAppName = "secondary";
+    let secondaryApp;
+
+    try {
+      secondaryApp = getApp(secondaryAppName);
+    } catch (error) {
+      secondaryApp = initializeApp(firebaseClientConfig, secondaryAppName);
+    }
+
+    return getAuth(secondaryApp);
+  }
+
   async function onSubmit(values: FormValues) {
     setIsSaving(true);
+    let secondaryAuth;
     try {
-      await addDoc(collection(db, "officials"), {
+      secondaryAuth = await createSecondaryAuth();
+      await setPersistence(secondaryAuth, inMemoryPersistence);
+      const { user } = await createUserWithEmailAndPassword(
+        secondaryAuth,
+        values.email,
+        values.password,
+      );
+
+      const officialData = {
+        uid: user.uid,
         name: values.name,
         email: values.email,
         phone: values.phone || "",
@@ -72,22 +98,56 @@ export default function RegisterOfficialPage() {
         notes: values.notes || "",
         role: "official",
         createdAt: serverTimestamp(),
-      });
+      };
+
+      const userData = {
+        uid: user.uid,
+        name: values.name,
+        email: values.email,
+        role: "official",
+        accountType: "official",
+        status: "Unknown",
+        lastKnownLocation: "Not specified",
+        phone: values.phone || "",
+        designation: values.designation || "",
+        department: values.department || "",
+        region: values.region || "",
+        notes: values.notes || "",
+        createdAt: serverTimestamp(),
+      };
+
+      await Promise.all([
+        setDoc(doc(db, "officials", user.uid), officialData),
+        setDoc(doc(db, "users", user.uid), userData),
+      ]);
 
       toast({
-        title: "Official added",
-        description: `${values.name} has been saved to officials.`,
+        title: "Official account created",
+        description: `${values.name} has been added and can now sign in with email/password.",
       });
       form.reset();
     } catch (error) {
-      console.error("Error adding official:", error);
+      console.error("Error creating official account:", error);
       toast({
         variant: "destructive",
         title: "Save failed",
-        description: "Could not save officials credentials. Please try again.",
+        description: "Could not save official credentials. Please try again.",
       });
     } finally {
       setIsSaving(false);
+      if (secondaryAuth) {
+        try {
+          await signOut(secondaryAuth);
+        } catch {
+          // ignore cleanup errors
+        }
+        try {
+          const secondaryApp = getApp("secondary");
+          await deleteApp(secondaryApp);
+        } catch {
+          // ignore cleanup errors
+        }
+      }
     }
   }
 
@@ -138,6 +198,20 @@ export default function RegisterOfficialPage() {
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
                         <Input type="email" placeholder="official@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Enter password" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
